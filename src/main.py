@@ -1,6 +1,5 @@
 import numpy as np
 from ucimlrepo import fetch_ucirepo
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
 from src.bayesian_linear_regressor import BayesianLinearRegressor
