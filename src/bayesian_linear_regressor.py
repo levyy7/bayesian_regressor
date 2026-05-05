@@ -1,4 +1,4 @@
-import math
+from math_utils import cholesky_inv
 
 import numpy as np
 
@@ -55,7 +55,7 @@ class BayesianLinearRegressor:
                 mean_post:    Posterior mean of shape (d,).
                 cov_post: Posterior covariance of shape (d, d).
         """
-        cov_post = np.linalg.inv((1.0 / sigma2_v) * np.eye(X.shape[1]) + X.T @ X / sigma2)
+        cov_post = cholesky_inv((1.0 / sigma2_v) * np.eye(X.shape[1]) + X.T @ X / sigma2)[0]
         mean_post = (1.0 / sigma2) * cov_post @ X.T @ y
 
         return mean_post, cov_post

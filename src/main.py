@@ -24,15 +24,28 @@ if __name__ == '__main__':
     X = X.select_dtypes(include=[np.number])
 
     X = X.to_numpy()
-    y = y.to_numpy()
+    y = y.to_numpy().squeeze()
 
     # Normalize Variabl;es
-    X = (X - X.mean(axis=0)) / X.std(axis=0)
-    y = ((y - y.mean()) / y.std()).squeeze()
+    #X = (X - X.mean(axis=0)) / X.std(axis=0)
+    #y = ((y - y.mean()) / y.std()).squeeze()
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
+
+    # normalize variables (post split is better)
+    mean_x, std_x = X_train.mean(axis=0), X_train.std(axis=0)
+    X_train = (X_train - mean_x) / std_x
+    X_test = (X_test - mean_x) / std_x
+
+    mean_y, std_y = y_train.mean(axis=0), y_train.std(axis=0)
+    y_train = (y_train - mean_y) / std_y
+    y_test = (y_test - mean_y) / std_y
+
+    # add intercept
+    X_train = np.hstack([np.ones((X_train.shape[0], 1)), X_train])
+    X_test = np.hstack([np.ones((X_test.shape[0], 1)), X_test])
 
     print(f"Train size : {X_train.shape}")
     print(f"Test size  : {X_test.shape}")
