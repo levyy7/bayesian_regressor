@@ -92,9 +92,10 @@ if __name__ == '__main__':
     X = dataset.data.features
     y = dataset.data.targets
 
-    # Drop columns with NaNs; keep only numeric features.
+    # Drop columns with NaNs; keep only numeric features (float64 as there were some unreliable int64 features)
     X = X.dropna(axis=1)
-    X = X.select_dtypes(include=[np.number])
+    X = X.select_dtypes(include=[np.float64])
+
     feature_names = X.columns.tolist()
     phi_names = ["intercept"] + feature_names
 
