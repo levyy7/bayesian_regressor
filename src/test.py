@@ -4,6 +4,8 @@ from ucimlrepo import fetch_ucirepo
 from sklearn.model_selection import train_test_split
 
 from src.bayesian_linear_regressor import BayesianLinearRegressor
+from src.plots import plot_posterior_distributions, plot_posterior_predictive, plot_model_comparison, \
+    plot_weight_comparison, plot_prior_sensitivity_weights, plot_sensitivity_metrics
 from verification import compute_credible_bands, top_k_predictors, create_comparison_baselines
 from hyperparams import log_marginal_likelihood, maximize_evidence
 from math_utils import rmse
@@ -19,6 +21,7 @@ def prior_sensitivity_analysis(
     sigma2_v_grid: np.ndarray,
     confidence: float = 0.95,
     k_top: int = 5,
+    track_indices: list[int] | None = None,
 ) -> dict:
     """
     Prior sensitivity analysis. For each sigma^2_v in the grid (with sigma^2
@@ -56,6 +59,7 @@ def prior_sensitivity_analysis(
     coverage_arr = np.zeros(n_grid)
     top_k_names_list = []
     top_k_means_arr = np.zeros((n_grid, k_top))
+    tracked_means_arr = np.zeros((n_grid, len(track_indices))) if track_indices else None
 
     for i, sigma2_v in enumerate(sigma2_v_grid):
         blr = BayesianLinearRegressor(sigma2=sigma2, sigma2_v=sigma2_v)
@@ -76,6 +80,9 @@ def prior_sensitivity_analysis(
         top_k_names_list.append(top["names"])
         top_k_means_arr[i, :] = top["means"]  # signed magnitudes
 
+        if track_indices is not None:
+            tracked_means_arr[i, :] = blr.mean_post[track_indices]
+
     return {
         "sigma2_v_grid": sigma2_v_grid,
         "test_rmse":     test_rmse_arr,
@@ -84,6 +91,8 @@ def prior_sensitivity_analysis(
         "coverage":      coverage_arr,
         "top_k_names":   top_k_names_list,
         "top_k_means":   top_k_means_arr,
+        "tracked_means": tracked_means_arr,
+        "track_indices": track_indices,
     }
 
 
@@ -125,36 +134,36 @@ if __name__ == '__main__':
 
     # log-evidence vs sigma^2_v (1D sweep) (sanity check)
     # sigma^2 fixed at the OLS residual variance (lab section 4)
-    v_ols, *_ = np.linalg.lstsq(X_train, y_train, rcond=None)
-    residuals_ols = y_train - X_train @ v_ols
-    sigma2 = float(residuals_ols.var())
-    print(f"\nsigma^2 (OLS residual variance): {sigma2:.4f}")
+    #v_ols, *_ = np.linalg.lstsq(X_train, y_train, rcond=None)
+    #residuals_ols = y_train - X_train @ v_ols
+    #sigma2 = float(residuals_ols.var())
+    #print(f"\nsigma^2 (OLS residual variance): {sigma2:.4f}")
 
-    sigma2_v_grid = np.logspace(-5, 3, 80)
-    lml = np.array([
-        log_marginal_likelihood(X_train, y_train, sigma2, sv) for sv in sigma2_v_grid
-    ])
+    #sigma2_v_grid = np.logspace(-5, 3, 80)
+    #lml = np.array([
+    #    log_marginal_likelihood(X_train, y_train, sigma2, sv) for sv in sigma2_v_grid
+    #])
 
-    idx_opt = int(np.argmax(lml))
-    sv_opt = sigma2_v_grid[idx_opt]
-    print(f"Optimal sigma^2_v on grid: {sv_opt:.6f}")
+    #idx_opt = int(np.argmax(lml))
+    #sv_opt = sigma2_v_grid[idx_opt]
+    #print(f"Optimal sigma^2_v on grid: {sv_opt:.6f}")
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(sigma2_v_grid, lml, "-o", markersize=3, color="darkgreen")
-    ax.axvline(sv_opt, color="firebrick", linestyle="--",
-               label=fr"$\sigma_v^2$ optimum approx {sv_opt:.4f}")
-    ax.set_xscale("log")
-    ax.set_xlabel(r"$\sigma_v^2$")
-    ax.set_ylabel(r"$\log p(y \mid \Phi, \sigma^2, \sigma_v^2)$")
-    ax.set_title(r"Log-evidence vs prior variance ($\sigma^2$ fixed)")
-    ax.legend()
-    ax.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.show()
+    #fig, ax = plt.subplots(figsize=(7, 4))
+    #ax.plot(sigma2_v_grid, lml, "-o", markersize=3, color="darkgreen")
+    #ax.axvline(sv_opt, color="firebrick", linestyle="--",
+    #           label=fr"$\sigma_v^2$ optimum approx {sv_opt:.4f}")
+    #ax.set_xscale("log")
+    #ax.set_xlabel(r"$\sigma_v^2$")
+    #ax.set_ylabel(r"$\log p(y \mid \Phi, \sigma^2, \sigma_v^2)$")
+    #ax.set_title(r"Log-evidence vs prior variance ($\sigma^2$ fixed)")
+    #ax.legend()
+    #ax.grid(alpha=0.3)
+    #plt.tight_layout()
+    #plt.show()
 
-    # hyper param tunning
-    sigma2_init = sigma2
-    sigma2_v_init = sv_opt
+    # hyper param optimization via evidence maximization (random initial values)
+    sigma2_init = 1.0
+    sigma2_v_init = 1.0
 
     sigma2_opt, sigma2_v_opt, result = maximize_evidence(
         X_train, y_train, sigma2_init, sigma2_v_init
@@ -173,8 +182,10 @@ if __name__ == '__main__':
     mean_pred_opt, var_pred_opt = blr_opt.predict(X_test)
     std_pred_opt = np.sqrt(var_pred_opt)
 
-    rmse_opt = rmse(y_test, mean_pred_opt)
-    print(f"\nTest RMSE (BLR evidence-optimal): {rmse_opt:.4f}")
+    blr_train_rmse = rmse(y_train, X_train @ blr_opt.mean_post)
+    blr_test_rmse = rmse(y_test, mean_pred_opt)
+    print(f"\nTrain RMSE (BLR evidence-optimal): {blr_train_rmse:.4f}")
+    print(f"\nTest RMSE (BLR evidence-optimal): {blr_test_rmse:.4f}")
 
     # credible bands
     bands = compute_credible_bands(mean_pred_opt, var_pred_opt, y_test)
@@ -203,6 +214,10 @@ if __name__ == '__main__':
               f"{ci_str:>22} "
               f"{'Yes' if top['excludes_zero'][i] else 'No':>8}")
 
+    plot_posterior_distributions(top)
+
+    plot_posterior_predictive(y_test, mean_pred_opt, std_pred_opt)
+
     # OLS / Ridge (CV) / Ridge (BLR-lambda) comparison
     results = create_comparison_baselines(
         X_train, y_train, X_test, y_test,
@@ -210,6 +225,13 @@ if __name__ == '__main__':
         sigma2_opt=sigma2_opt,
         sigma2_v_opt=sigma2_v_opt,
     )
+
+    weights = {
+        "OLS": results["ols"]["coef"],
+        "Ridge (CV)": results["ridge_cv"]["coef"],
+        "Ridge (BLR-λ)": results["ridge_blr"]["coef"],
+        "BLR (evidence)": blr_opt.mean_post,
+    }
 
     print("\n--- Model comparison ---")
     print(f"{'Method':<22} {'Train RMSE':>12} {'Test RMSE':>12}")
@@ -220,7 +242,10 @@ if __name__ == '__main__':
           f"{results['ridge_cv']['test_rmse']:>12.4f}  alpha={results['ridge_cv']['alpha']:.5f}")
     print(f"{'Ridge (BLR-lambda)':<22} {results['ridge_blr']['train_rmse']:>12.4f} "
           f"{results['ridge_blr']['test_rmse']:>12.4f}  alpha={results['ridge_blr']['alpha']:.5f}")
-    print(f"{'BLR (evidence)':<22}            -  {rmse_opt:>12.4f}  lambda={results['ridge_blr']['lambda_blr']:.5f}")
+    print(f"{'BLR (evidence)':<22}            -  {blr_test_rmse:>12.4f}  lambda={results['ridge_blr']['lambda_blr']:.5f}")
+
+    plot_model_comparison(results, blr_train_rmse, blr_test_rmse)
+    plot_weight_comparison(weights, phi_names, list(top["indices"]))
 
     # Sanity check of the BLR-MAP == Ridge equivalence (slide 16).
     print(f"\nBLR-MAP == Ridge sanity check:")
@@ -236,6 +261,7 @@ if __name__ == '__main__':
         feature_names=phi_names,
         sigma2=sigma2_opt,
         sigma2_v_grid=sigma2_v_grid_sens,
+        track_indices=list(top["indices"]),
     )
 
     representative_idx = [0, 7, 14, 21, 28]
@@ -257,3 +283,6 @@ if __name__ == '__main__':
         print(f"\nsigma^2_v = {sens['sigma2_v_grid'][i]:.4g}:")
         for j, name in enumerate(sens['top_k_names'][i]):
             print(f"  {j + 1}. {name:<20}  mu = {sens['top_k_means'][i, j]:+.4f}")
+
+    plot_prior_sensitivity_weights(sens, top, sigma2_v_opt, sv_values=[0.001, sigma2_v_opt, 0.1, 10.0])
+    plot_sensitivity_metrics(sens, sigma2_v_opt)

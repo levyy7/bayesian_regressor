@@ -1,6 +1,11 @@
 from numpy import ndarray, asarray, float64, eye, sum, log, diag, pi, exp
+from pandas import DataFrame
+
 from math_utils import cholesky_inv
 from scipy.optimize import OptimizeResult, minimize # TODO verify with professor if its legal
+
+from src.plots import plot_evidence_maximization
+
 
 def log_marginal_likelihood(x: ndarray, y: ndarray, noise_variance: float, prior_variance: float) -> float:
     """
@@ -65,13 +70,26 @@ def maximize_evidence(
         sigma2_v = exp(u2)
         return -log_marginal_likelihood(x, y, sigma2, sigma2_v)
 
+    # auxiliary function to store the optimization process
+    history = []
+    def neg_log_evidence_tracked(u: ndarray) -> float:
+        val = neg_log_evidence(u)
+        history.append({
+            "sigma2": exp(u[0]),
+            "sigma2_v": exp(u[1]),
+            "neg_log_ev": val
+        })
+        return val
 
     # we use log scale and then convert back
     # TODO document why (to avoid the positivity constraint (sigma2 > 0, sigma2_v > 0). The optimizer operates on u = (log sigma2, log sigma2_v), and we exponentiate at the end.)
     u_init = [log(sigma2_init), log(sigma2_v_init)]
 
     # TODO document why we use this method
-    result = minimize(neg_log_evidence, u_init, method="L-BFGS-B")
+    result = minimize(neg_log_evidence_tracked, u_init, method="L-BFGS-B")
+    history = DataFrame(history)
+
+    plot_evidence_maximization(history)
 
     # convert back
     sigma2_opt = exp(result.x[0])
