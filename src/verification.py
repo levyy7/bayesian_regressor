@@ -1,3 +1,4 @@
+import numpy as np
 from numpy import sqrt, ndarray, mean, abs, argsort, diag, inf, max, logspace
 from math_utils import rmse
 from scipy.stats import norm # TODO verify with professor if its legal
@@ -59,6 +60,9 @@ def top_k_predictors(
     Marginal of weight w_j is obtained using:
         w_j | D ~ N(mu_n^(j), sum_n^(j,j)) (check the lab section 8)
 
+    The predictors are ranked by their signal-to-noise ratio (SNR):
+    SNR_j = |mu_n^(j)| / sqrt(sum_n^(j,j))
+
     Args:
         mean_post:       posterior mean array, shape (D,)
         cov_post:        posterior covariance matrix, shape (D, D)
@@ -82,13 +86,13 @@ def top_k_predictors(
     if not (mean_post.ndim == 1 and cov_post.shape == (dimension, dimension) and len(feature_names) == dimension):
         raise ValueError("invalid args")
 
-    abs_means = abs(mean_post)
+    std_filtered = np.sqrt(np.diag(cov_post))
+    snr = np.abs(mean_post) / (std_filtered + 1e-12)  # epsilon for safety
 
-    # remove exclusions
-    abs_means_filtered = abs_means.copy()
-    abs_means_filtered[list(exclude_indices)] = -inf
+    snr_filtered = snr.copy()
+    snr_filtered[list(exclude_indices)] = -np.inf
 
-    top_idx = argsort(-abs_means_filtered)[:k]
+    top_idx = np.argsort(-snr_filtered)[:k]
 
     means = mean_post[top_idx]
     variances = diag(cov_post)[top_idx]
