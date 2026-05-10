@@ -1,8 +1,11 @@
 import numpy as np
-from numpy import sqrt, ndarray, mean, abs, argsort, diag, inf, max, logspace
-from math_utils import rmse
+from numpy import sqrt, ndarray, mean, abs, diag, max, logspace
+from src.math_utils import rmse
 from scipy.stats import norm # TODO verify with professor if its legal
 from sklearn.linear_model import Ridge, RidgeCV, LinearRegression
+
+from src.bayesian_linear_regressor import BayesianLinearRegressor
+
 
 def compute_credible_bands(
     mean_pred: ndarray,
@@ -231,4 +234,88 @@ def create_comparison_baselines(
         "ols": ols_results,
         "ridge_cv": ridge_cv_results,
         "ridge_blr": ridge_blr_results,
+    }
+
+def prior_sensitivity_analysis(
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_test: np.ndarray,
+    y_test: np.ndarray,
+    feature_names: list[str],
+    sigma2: float,
+    sigma2_v_grid: np.ndarray,
+    confidence: float = 0.95,
+    k_top: int = 5,
+    track_indices: list[int] | None = None,
+) -> dict:
+    """
+    Prior sensitivity analysis. For each sigma^2_v in the grid (with sigma^2
+    fixed), fit BLR and measure key quantities to evaluate which conclusions
+    are robust to the choice of prior and which are not.
+
+    Replicates section 7 of the lab:
+    the lab computes test RMSE, ||mu_n||_2 and mean predictive SD for a
+    logarithmic grid of sigma^2_v. We also add coverage and top-k
+    predictors.
+
+    Args:
+        x_train, y_train: train set (with intercept).
+        x_test, y_test:   test set (with intercept).
+        feature_names:    names of the D columns of Phi (includes intercept).
+        sigma2:           fixed sigma^2 (typically the evidence-optimal value).
+        sigma2_v_grid:    array of sigma^2_v values to evaluate.
+        confidence:       credible interval level for coverage.
+        k_top:            number of top predictors to keep per value.
+
+    Returns:
+        dict with arrays parallel to the grid:
+            'sigma2_v_grid': input grid.
+            'test_rmse':     test RMSE per value.
+            'norm_mu_n':     ||mu_n||_2 per value.
+            'mean_pred_sd':  mean of predictive std on test set.
+            'coverage':      empirical coverage at `confidence`% on test.
+            'top_k_names':   list[list[str]], top-k names per value.
+            'top_k_means':   array (n_grid, k_top), top-k magnitudes (signed).
+    """
+    n_grid = len(sigma2_v_grid)
+    test_rmse_arr = np.zeros(n_grid)
+    norm_mu_n_arr = np.zeros(n_grid)
+    mean_pred_sd_arr = np.zeros(n_grid)
+    coverage_arr = np.zeros(n_grid)
+    top_k_names_list = []
+    top_k_means_arr = np.zeros((n_grid, k_top))
+    tracked_means_arr = np.zeros((n_grid, len(track_indices))) if track_indices else None
+
+    for i, sigma2_v in enumerate(sigma2_v_grid):
+        blr = BayesianLinearRegressor(sigma2=sigma2, sigma2_v=sigma2_v)
+        blr.fit(x_train, y_train)
+
+        mean_pred, var_pred = blr.predict(x_test)
+        std_pred = np.sqrt(var_pred)
+
+        test_rmse_arr[i] = rmse(y_test, mean_pred)
+        # Euclidean (L2) norm of the posterior mean
+        norm_mu_n_arr[i] = float(np.linalg.norm(blr.mean_post, ord=2))
+        mean_pred_sd_arr[i] = float(std_pred.mean())
+
+        bands = compute_credible_bands(mean_pred, var_pred, y_test, confidence)
+        coverage_arr[i] = bands["coverage"]
+
+        top = top_k_predictors(blr.mean_post, blr.cov_post, feature_names, k=k_top)
+        top_k_names_list.append(top["names"])
+        top_k_means_arr[i, :] = top["means"]  # signed magnitudes
+
+        if track_indices is not None:
+            tracked_means_arr[i, :] = blr.mean_post[track_indices]
+
+    return {
+        "sigma2_v_grid": sigma2_v_grid,
+        "test_rmse":     test_rmse_arr,
+        "norm_mu_n":     norm_mu_n_arr,
+        "mean_pred_sd":  mean_pred_sd_arr,
+        "coverage":      coverage_arr,
+        "top_k_names":   top_k_names_list,
+        "top_k_means":   top_k_means_arr,
+        "tracked_means": tracked_means_arr,
+        "track_indices": track_indices,
     }

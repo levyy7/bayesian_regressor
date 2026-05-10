@@ -1,7 +1,7 @@
 from numpy import ndarray, asarray, float64, eye, sum, log, diag, pi, exp
 from pandas import DataFrame
 
-from math_utils import cholesky_inv
+from src.math_utils import cholesky_inv
 from scipy.optimize import OptimizeResult, minimize # TODO verify with professor if its legal
 
 from src.plots import plot_evidence_maximization

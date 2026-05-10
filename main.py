@@ -1,99 +1,14 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from ucimlrepo import fetch_ucirepo
 from sklearn.model_selection import train_test_split
 
 from src.bayesian_linear_regressor import BayesianLinearRegressor
 from src.plots import plot_posterior_distributions, plot_posterior_predictive, plot_model_comparison, \
     plot_weight_comparison, plot_prior_sensitivity_weights, plot_sensitivity_metrics
-from verification import compute_credible_bands, top_k_predictors, create_comparison_baselines
-from hyperparams import log_marginal_likelihood, maximize_evidence
-from math_utils import rmse
-
-
-def prior_sensitivity_analysis(
-    x_train: np.ndarray,
-    y_train: np.ndarray,
-    x_test: np.ndarray,
-    y_test: np.ndarray,
-    feature_names: list[str],
-    sigma2: float,
-    sigma2_v_grid: np.ndarray,
-    confidence: float = 0.95,
-    k_top: int = 5,
-    track_indices: list[int] | None = None,
-) -> dict:
-    """
-    Prior sensitivity analysis. For each sigma^2_v in the grid (with sigma^2
-    fixed), fit BLR and measure key quantities to evaluate which conclusions
-    are robust to the choice of prior and which are not.
-
-    Replicates section 7 of the lab:
-    the lab computes test RMSE, ||mu_n||_2 and mean predictive SD for a
-    logarithmic grid of sigma^2_v. We also add coverage and top-k
-    predictors.
-
-    Args:
-        x_train, y_train: train set (with intercept).
-        x_test, y_test:   test set (with intercept).
-        feature_names:    names of the D columns of Phi (includes intercept).
-        sigma2:           fixed sigma^2 (typically the evidence-optimal value).
-        sigma2_v_grid:    array of sigma^2_v values to evaluate.
-        confidence:       credible interval level for coverage.
-        k_top:            number of top predictors to keep per value.
-
-    Returns:
-        dict with arrays parallel to the grid:
-            'sigma2_v_grid': input grid.
-            'test_rmse':     test RMSE per value.
-            'norm_mu_n':     ||mu_n||_2 per value.
-            'mean_pred_sd':  mean of predictive std on test set.
-            'coverage':      empirical coverage at `confidence`% on test.
-            'top_k_names':   list[list[str]], top-k names per value.
-            'top_k_means':   array (n_grid, k_top), top-k magnitudes (signed).
-    """
-    n_grid = len(sigma2_v_grid)
-    test_rmse_arr = np.zeros(n_grid)
-    norm_mu_n_arr = np.zeros(n_grid)
-    mean_pred_sd_arr = np.zeros(n_grid)
-    coverage_arr = np.zeros(n_grid)
-    top_k_names_list = []
-    top_k_means_arr = np.zeros((n_grid, k_top))
-    tracked_means_arr = np.zeros((n_grid, len(track_indices))) if track_indices else None
-
-    for i, sigma2_v in enumerate(sigma2_v_grid):
-        blr = BayesianLinearRegressor(sigma2=sigma2, sigma2_v=sigma2_v)
-        blr.fit(x_train, y_train)
-
-        mean_pred, var_pred = blr.predict(x_test)
-        std_pred = np.sqrt(var_pred)
-
-        test_rmse_arr[i] = rmse(y_test, mean_pred)
-        # Euclidean (L2) norm of the posterior mean
-        norm_mu_n_arr[i] = float(np.linalg.norm(blr.mean_post, ord=2))
-        mean_pred_sd_arr[i] = float(std_pred.mean())
-
-        bands = compute_credible_bands(mean_pred, var_pred, y_test, confidence)
-        coverage_arr[i] = bands["coverage"]
-
-        top = top_k_predictors(blr.mean_post, blr.cov_post, feature_names, k=k_top)
-        top_k_names_list.append(top["names"])
-        top_k_means_arr[i, :] = top["means"]  # signed magnitudes
-
-        if track_indices is not None:
-            tracked_means_arr[i, :] = blr.mean_post[track_indices]
-
-    return {
-        "sigma2_v_grid": sigma2_v_grid,
-        "test_rmse":     test_rmse_arr,
-        "norm_mu_n":     norm_mu_n_arr,
-        "mean_pred_sd":  mean_pred_sd_arr,
-        "coverage":      coverage_arr,
-        "top_k_names":   top_k_names_list,
-        "top_k_means":   top_k_means_arr,
-        "tracked_means": tracked_means_arr,
-        "track_indices": track_indices,
-    }
+from src.verification import compute_credible_bands, top_k_predictors, create_comparison_baselines, \
+    prior_sensitivity_analysis
+from src.hyperparams import maximize_evidence
+from src.math_utils import rmse
 
 
 if __name__ == '__main__':
@@ -131,35 +46,6 @@ if __name__ == '__main__':
     print(f"Train size : {X_train.shape}")
     print(f"Test size  : {X_test.shape}")
     print(f"Features   : {X_train.shape[1]}  (includes intercept)")
-
-    # log-evidence vs sigma^2_v (1D sweep) (sanity check)
-    # sigma^2 fixed at the OLS residual variance (lab section 4)
-    #v_ols, *_ = np.linalg.lstsq(X_train, y_train, rcond=None)
-    #residuals_ols = y_train - X_train @ v_ols
-    #sigma2 = float(residuals_ols.var())
-    #print(f"\nsigma^2 (OLS residual variance): {sigma2:.4f}")
-
-    #sigma2_v_grid = np.logspace(-5, 3, 80)
-    #lml = np.array([
-    #    log_marginal_likelihood(X_train, y_train, sigma2, sv) for sv in sigma2_v_grid
-    #])
-
-    #idx_opt = int(np.argmax(lml))
-    #sv_opt = sigma2_v_grid[idx_opt]
-    #print(f"Optimal sigma^2_v on grid: {sv_opt:.6f}")
-
-    #fig, ax = plt.subplots(figsize=(7, 4))
-    #ax.plot(sigma2_v_grid, lml, "-o", markersize=3, color="darkgreen")
-    #ax.axvline(sv_opt, color="firebrick", linestyle="--",
-    #           label=fr"$\sigma_v^2$ optimum approx {sv_opt:.4f}")
-    #ax.set_xscale("log")
-    #ax.set_xlabel(r"$\sigma_v^2$")
-    #ax.set_ylabel(r"$\log p(y \mid \Phi, \sigma^2, \sigma_v^2)$")
-    #ax.set_title(r"Log-evidence vs prior variance ($\sigma^2$ fixed)")
-    #ax.legend()
-    #ax.grid(alpha=0.3)
-    #plt.tight_layout()
-    #plt.show()
 
     # hyper param optimization via evidence maximization (random initial values)
     sigma2_init = 1.0

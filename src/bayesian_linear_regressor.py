@@ -1,4 +1,4 @@
-from math_utils import cholesky_inv
+from src.math_utils import cholesky_inv
 
 import numpy as np
 
