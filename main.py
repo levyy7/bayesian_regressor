@@ -15,9 +15,13 @@ if __name__ == '__main__':
     dataset = fetch_ucirepo(id=183)
     X = dataset.data.features
     y = dataset.data.targets
+    print(X.dtypes.value_counts())
 
     # Drop columns with NaNs; keep only numeric features (float64 as there were some unreliable int64 features)
+    X = X.replace("?", np.nan)
+    print("Features before dropping NA:", X.shape)
     X = X.dropna(axis=1)
+    print("Features after dropping NA:", X.shape)
     X = X.select_dtypes(include=[np.float64])
 
     feature_names = X.columns.tolist()
