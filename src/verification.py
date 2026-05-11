@@ -1,7 +1,7 @@
 import numpy as np
 from numpy import sqrt, ndarray, mean, abs, diag, max, logspace
 from src.math_utils import rmse
-from scipy.stats import norm # TODO verify with professor if its legal
+from scipy.stats import norm
 from sklearn.linear_model import Ridge, RidgeCV, LinearRegression
 
 from src.bayesian_linear_regressor import BayesianLinearRegressor
@@ -105,7 +105,6 @@ def top_k_predictors(
     z = norm.ppf(1 - alpha / 2)
     ci_lower, ci_upper = means - z*stds, means + z*stds
 
-    # TODO check
     excludes_zero = (ci_lower > 0) | (ci_upper < 0)
 
     names = [feature_names[i] for i in top_idx]
@@ -226,7 +225,7 @@ def create_comparison_baselines(
     # check lab section 9
     ridge_cv_results = _ridge_cv(x_train, y_train, x_test, y_test, alphas, cv_folds)
 
-    # lamba = sigma2 / sigma2_v — slide 16. TODO document why is different
+    # lamba = sigma2 / sigma2_v — slide 16 de clase
     lambda_blr = sigma2_opt / sigma2_v_opt
     ridge_blr_results = _ridge_blr(x_train, y_train, x_test, y_test, blr_mean_post, lambda_blr)
 

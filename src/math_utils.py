@@ -1,5 +1,5 @@
 from numpy import sqrt, ndarray, eye
-from scipy.linalg import cho_factor, cho_solve # TODO verify with professor if its legal
+from scipy.linalg import cho_factor, cho_solve
 
 def rmse(y_true, y_pred):
     return float(sqrt(((y_true - y_pred) ** 2).mean()))

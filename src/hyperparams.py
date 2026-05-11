@@ -2,7 +2,7 @@ from numpy import ndarray, asarray, float64, eye, sum, log, diag, pi, exp
 from pandas import DataFrame
 
 from src.math_utils import cholesky_inv
-from scipy.optimize import OptimizeResult, minimize # TODO verify with professor if its legal
+from scipy.optimize import OptimizeResult, minimize
 
 from src.plots import plot_evidence_maximization
 
@@ -33,7 +33,6 @@ def log_marginal_likelihood(x: ndarray, y: ndarray, noise_variance: float, prior
     c = noise_variance * eye(len(x)) + prior_variance * (x @ x.T)
 
     (c_inv, lower) = cholesky_inv(c)
-    # log|C| = 2 · sum log(L_ii) TODO add reference of why we calculate the determinant like this
     log_det_c = 2.0 * sum(log(diag(lower)))
 
     # lab formula (1.3)
@@ -48,8 +47,6 @@ def maximize_evidence(
     """
     Tunes hyperparams (sigma^2, sigma^2_v) por type-II maximum likelihood,
     by maximizing log evidence over the train set
-
-    TODO reference labs bibliography (evidence framework de Bishop (2006, §3.5.2) and MacKay (1992))
 
     Args:
         x:             design matrix phi of the train set (n, D).
@@ -82,10 +79,8 @@ def maximize_evidence(
         return val
 
     # we use log scale and then convert back
-    # TODO document why (to avoid the positivity constraint (sigma2 > 0, sigma2_v > 0). The optimizer operates on u = (log sigma2, log sigma2_v), and we exponentiate at the end.)
     u_init = [log(sigma2_init), log(sigma2_v_init)]
 
-    # TODO document why we use this method
     result = minimize(neg_log_evidence_tracked, u_init, method="L-BFGS-B")
     history = DataFrame(history)
 
